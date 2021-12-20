@@ -1,0 +1,1 @@
+{"<SEP>": 0, "<UNK>": 1, "NOUN": 2, "ADP": 3, "ADJ": 4, "PROPN": 5, "VERB": 6, "PUNCT": 7, "DET": 8, "ADV": 9, "PRON": 10, "CCONJ": 11, "SCONJ": 12, "NUM": 13, "PART": 14, "AUX": 15, "X": 16, "SYM": 17, "INTJ": 18}
