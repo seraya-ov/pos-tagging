@@ -38,22 +38,22 @@ if __name__ == '__main__':
                         default='./checkpoints/',
                         help='Checkpoint path')
     parser.add_argument('--train_size', action='store',
-                        default=100000,
+                        default=100000, type=int,
                         help='Train set size')
     parser.add_argument('--val_size', action='store',
-                        default=20000,
+                        default=20000, type=int,
                         help='Val set size')
     parser.add_argument('--batch_size', action='store',
-                        default=128,
+                        default=128, type=int,
                         help='Batch size')
     parser.add_argument('--epochs', action='store',
-                        default=10,
+                        default=10, type=int,
                         help='Epochs')
     parser.add_argument('--vocab', action='store',
                         default='',
                         help='Vocabulary path')
-    parser.add_argument('--lr',  action='store',
-                        default=0.003,
+    parser.add_argument('--lr', action='store',
+                        default=0.003, type=float,
                         help='Learning rate')
     parser.add_argument('--log', action='store_const',
                         const=True, default=False,

@@ -30,11 +30,15 @@ class FlairTrainer:
             self.optimizer.zero_grad()
             if cuda:
                 tokens = tokens.cuda()
-            x = tokens[:, :-1]
-            y = tokens[:, 1:]
-            output = self.model(x.to(dtype=torch.long))[1][0]
-            loss = self.criterion(output.view(-1, output.shape[-1]).to(dtype=torch.float),
-                                  y.reshape(-1).to(dtype=torch.long))
+            x = tokens
+            y_f = tokens[:, 1:]
+            y_b = tokens[:, :-1]
+            output_f, output_b, _ = self.model(x.to(dtype=torch.long))[1]
+            loss_forward = self.criterion(output_f.reshape(-1, output_f.shape[-1]).to(dtype=torch.float),
+                                          y_f.reshape(-1).to(dtype=torch.long))
+            loss_backward = self.criterion(output_b.reshape(-1, output_b.shape[-1]).to(dtype=torch.float),
+                                           y_b.reshape(-1).to(dtype=torch.long))
+            loss = loss_forward + loss_backward
 
             loss.backward()
             nn.utils.clip_grad_norm_(self.model.parameters(), clip)
@@ -59,11 +63,15 @@ class FlairTrainer:
             for batch_idx, (tokens, _, __) in enumerate(self.val_loader):
                 if cuda:
                     tokens = tokens.cuda()
-                x = tokens[:, :-1]
-                y = tokens[:, 1:]
-                output = self.model(x.to(dtype=torch.long))[1][0]
-                loss = self.criterion(output.view(-1, output.shape[-1]).to(dtype=torch.float),
-                                      y.reshape(-1).to(dtype=torch.long))
+                x = tokens
+                y_f = tokens[:, 1:]
+                y_b = tokens[:, :-1]
+                output_f, output_b, _ = self.model(x.to(dtype=torch.long))[1]
+                loss_forward = self.criterion(output_f.reshape(-1, output_f.shape[-1]).to(dtype=torch.float),
+                                              y_f.reshape(-1).to(dtype=torch.long))
+                loss_backward = self.criterion(output_b.reshape(-1, output_b.shape[-1]).to(dtype=torch.float),
+                                               y_b.reshape(-1).to(dtype=torch.long))
+                loss = loss_forward + loss_backward
 
                 total_loss += loss.item()
 
@@ -90,7 +98,7 @@ class FlairTrainer:
 
     def fit(self, max_epochs: int = 20, cuda=True, clip=5, log=False):
         for epoch in range(max_epochs):
-            if epoch and self.save_path and epoch % self.save_every == 0:
+            if epoch and self.save_every and epoch % self.save_every == 0:
                 self.checkpoint(epoch)
             print('\rEpoch: %d' % epoch)
             train_loss = self.train_epoch(cuda=cuda, clip=clip)
@@ -101,7 +109,7 @@ class FlairTrainer:
 
 class POSTrainer:
     def __init__(self, model: nn.Module, train_loader, val_loader, lr=3e-3, betas=(0.9, 0.999),
-                 project="flair_pos_tagger", save_every=None, save_path='./'):
+                 project="flair_pos_tagger", save_every=None, save_path='./', name=None):
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=betas)
         self.train_loader = train_loader
@@ -110,7 +118,7 @@ class POSTrainer:
         self.save_path = save_path
         self.save_every = save_every
         self.name = project
-        wandb.init(project=project)
+        wandb.init(project=project, name=name)
 
     def train_epoch(self, cuda=True, clip=5):
         if cuda:
@@ -201,10 +209,12 @@ class POSTrainer:
 
     def fit(self, max_epochs: int = 20, cuda=True, clip=5, log=False):
         for epoch in range(max_epochs):
-            if epoch and self.save_path and epoch % self.save_every == 0:
+            if epoch and self.save_every and epoch % self.save_every == 0:
                 self.checkpoint(epoch)
             print('\rEpoch: %d' % epoch)
             train_loss, train_accuracy = self.train_epoch(cuda=cuda, clip=clip)
             test_loss, test_accuracy = self.test_epoch(cuda=cuda)
             if log:
                 self.log(epoch, train_loss, train_accuracy, test_loss, test_accuracy)
+        if self.save_every:
+            self.checkpoint(max_epochs)

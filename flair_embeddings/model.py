@@ -8,10 +8,9 @@ class FlairEmbeddings(nn.Module):
                  dropout=0.3):
         super().__init__()
         self.embedding = nn.Embedding(n_tokens, embedding_dim)
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers=1, bidirectional=True,
-                            batch_first=True)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers=1, bidirectional=True, batch_first=True)
         self.dropout = nn.Dropout(dropout)
-        self.fc = nn.Linear(hidden_dim * 2, n_tokens)
+        self.fc = nn.Linear(hidden_dim, n_tokens)
 
         self.max_words = max_words
         self.n_tokens = n_tokens
@@ -28,10 +27,12 @@ class FlairEmbeddings(nn.Module):
         x = pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)
         output, hidden = self.lstm(x, hidden)
         output, _ = pad_packed_sequence(output, batch_first=True)
+        output_f = output[:, :, :self.hidden_dim]
+        output_b = output[:, :, self.hidden_dim:]
 
-        out = self.dropout(output)
-        out = self.fc(out)
-        return output, (out, hidden)
+        out_f = self.fc(self.dropout(output_f))
+        out_b = self.fc(self.dropout(output_b))
+        return output, (out_f[:, :-1], out_b[:, 1:], hidden)
 
     def predict(self, x, hidden=None):
         out, _ = self.forward(x.to(dtype=torch.long), hidden)
@@ -48,6 +49,7 @@ class FlairEmbeddings(nn.Module):
                 emb[one_ids[i, 0], j, :self.hidden_dim] = out[one_ids[i, 0], one_ids[i, 1], :self.hidden_dim]
                 j += 1
                 emb[one_ids[i, 0], j, self.hidden_dim:] = out[one_ids[i, 0], one_ids[i, 1], self.hidden_dim:]
+
         return emb
 
 
@@ -57,16 +59,17 @@ class PosTagger(nn.Module):
                  freeze_emb=True, num_embeddings=None, classic_emb_dim=128):
         super(PosTagger, self).__init__()
         self.hidden_dim = hidden_dim
-        embedding_dim = flair.hidden_dim * 2
+        self.embedding_dim = flair.hidden_dim * 2
         self.embedder = flair.cpu()
         self.classic_embeddings = None
         if num_embeddings:
             self.classic_embeddings = nn.Embedding(num_embeddings, classic_emb_dim)
+            self.embedding_dim += classic_emb_dim
         if freeze_emb:
             self.embedder = self.embedder.eval()
             for param in self.embedder.parameters():
                 param.requires_grad = False
-        self.encoder = nn.LSTM(embedding_dim, hidden_dim, num_layers=2, bidirectional=True,
+        self.encoder = nn.LSTM(self.embedding_dim, hidden_dim, num_layers=2, bidirectional=True,
                                batch_first=True)
         self.feedforward = nn.Linear(2 * hidden_dim, feedforward_dim)
         self.out = nn.Linear(feedforward_dim, output_dim)
@@ -77,7 +80,11 @@ class PosTagger(nn.Module):
         lengths = mask.sum(dim=1).to('cpu')
 
         if self.classic_embeddings:
-            x = torch.cat([self.embedder.predict(x), self.classic_embeddings(x)], dim=-1)
+            flair = self.embedder.predict(x)
+            classic = self.classic_embeddings(words)
+            classic_target = torch.zeros(classic.shape[0], flair.shape[1], classic.shape[-1]).to(classic.device)
+            classic_target[:, :classic.shape[1], :] = classic
+            x = torch.cat([flair, classic_target], dim=-1)
         else:
             x = self.embedder.predict(x)
         x = pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)

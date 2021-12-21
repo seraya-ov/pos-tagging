@@ -37,9 +37,10 @@ def predict(args):
     chars, words = processor.process(args['data'])
     flair_embedding_model = FlairEmbeddings(len(processor.vocab.c2i), processor.vocab.max_len)
     if not args['emb']:
-        pos_model = PosTagger(len(processor.vocab.t2i), flair_embedding_model)
+        pos_model = PosTagger(len(processor.vocab.t2i), flair_embedding_model, hidden_dim=args['hidden_dim'])
     else:
-        pos_model = PosTagger(len(processor.vocab.t2i), flair_embedding_model, num_embeddings=len(processor.vocab.w2i))
+        pos_model = PosTagger(len(processor.vocab.t2i), flair_embedding_model,
+                              num_embeddings=len(processor.vocab.w2i), hidden_dim=args['hidden_dim'])
     pos_model.load_state_dict(torch.load(args['pos_checkpoint_path'], map_location=torch.device('cpu')))
     pos_model.eval()
     return ' '.join([processor.vocab.i2t[pred] for pred in pos_model(chars, words).argmax(dim=-1)[0]])
@@ -53,6 +54,9 @@ if __name__ == '__main__':
     parser.add_argument('--data', action='store',
                         default='Просто какое-то предложение',
                         help='Sentence to predict POS tags for')
+    parser.add_argument('--hidden_dim', action='store',
+                        default=300, type=int,
+                        help='Hidden dim')
     parser.add_argument('--vocab', action='store',
                         default='./vocab',
                         help='Vocabulary path')
